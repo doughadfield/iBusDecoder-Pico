@@ -28,7 +28,7 @@ extern void Ibus_Init(void);
 extern volatile uint16_t ibus_channels[IBUS_NUM_CHANNELS];
 
 // Flag to indicate new valid data is available (optional - for main core polling)
-extern volatile bool ibus_new_data_flag;
+extern volatile uint8_t ibus_new_data_flag;
 
 // send telemetry response if we receive a valid query on the telemetry UART
 extern void telemetry_send(void);

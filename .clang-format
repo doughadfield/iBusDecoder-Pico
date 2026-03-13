@@ -1,0 +1,24 @@
+---
+# The foundation style (Allman/BSD)
+BasedOnStyle: LLVM
+BreakBeforeBraces: Allman
+
+# Column Alignment for Inline Comments
+# This forces comments to start at rightmost existing comment
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 2
+# Note: Clang-Format doesn't have a "FixedColumn" setting for comments; 
+# it aligns them based on the surrounding code block. 
+# However, you can set a ColumnLimit to prevent them from trailing too far.
+ColumnLimit: 150
+
+# Keeps the comments from being sucked too close to the code
+SpacesBeforeTrailingComments: 2
+
+# Additional clean-up for Allman aesthetics
+IndentWidth: 4
+AllowShortBlocksOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+
+---

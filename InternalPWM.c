@@ -6,6 +6,7 @@
  *      Author: Doug
  * This file contains code for generating PWM signals to control a servo motor
  * using the Raspberry Pi Pico's internal PWM hardware.
+ * servo outputs should use 250Hz period, with brushed motor outputs using 10kHz for smoother control of ESCs
 */
 
 
