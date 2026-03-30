@@ -29,9 +29,9 @@
 #include "pca9685.h"
 #include "rgbled.h"
 
-#define VBAT 28  // Analog input for battery voltage monitoring
+#define VBAT 28  // Analog input pin for battery voltage monitoring
 
-// #define I2C_ENABLE
+// #define I2C_ENABLE   // Uncomment to enable I2C bus on designated pins
 #define RGBLED  // Enable use of on-board RGB LED for status indication (uses PIO program to control LED blinking)
 
 #ifdef I2C_ENABLE
@@ -83,11 +83,50 @@ struct channel
  * using both pins of a single PWM slice
  */
 
-#define DEADBAND 30  // deadband in microseconds for motor control around neutral (1500 µs) to prevent jitter
+#define DEADBAND 3  // noise value around midband from transmitter
+#define MIN_MOTOR 35    // value at which motor just starts moving
 
 void motor_drive(struct channel channel, uint16_t pulse_width)
 {
-    // For motors (ESCs), we assume pulse_width is already in the correct range (e.g., 1000-2000 µs) and just convert to PWM level
+    // Constrain input to valid servo range
+    if (pulse_width < 1000) pulse_width = 1000;
+    if (pulse_width > 2000) pulse_width = 2000;
+
+    uint slice_num = pwm_gpio_to_slice_num(channel.pin[0]);
+
+    if (pulse_width > 1500 + DEADBAND)
+    {
+        // === FORWARD ===
+        uint16_t throttle = pulse_width - 1500;           // 0 to 500
+        uint16_t level = MIN_MOTOR + 
+                         ((uint64_t)throttle * (servo_wrap[slice_num] + 1 - MIN_MOTOR)) / 500;
+
+        pwm_set_gpio_level(channel.pin[0], level);   // Forward pin
+        pwm_set_gpio_level(channel.pin[1], 0);       // Reverse pin off
+    }
+    else if (pulse_width < 1500 - DEADBAND)
+    {
+        // === REVERSE ===
+        uint16_t throttle = 1500 - pulse_width;           // 0 to 500
+        uint16_t level = MIN_MOTOR + 
+                         ((uint64_t)throttle * (servo_wrap[slice_num] + 1 - MIN_MOTOR)) / 500;
+
+        pwm_set_gpio_level(channel.pin[1], level);   // Reverse pin
+        pwm_set_gpio_level(channel.pin[0], 0);       // Forward pin off
+    }
+    else
+    {
+        // Within neutral deadband → stop both directions
+        pwm_set_gpio_level(channel.pin[0], 0);
+        pwm_set_gpio_level(channel.pin[1], 0);
+    }
+}
+
+#ifdef NEVER // old motor drive function
+void motor_drive(struct channel channel, uint16_t pulse_width)
+{
+    // For motors (ESCs), we assume pulse_width is in the standard servo range (e.g., 1000-2000 µs)
+    // and just convert to 0-100% full PWM level
     if (pulse_width < 1000)
         pulse_width = 1000;                     // constrain to minimum
     if (pulse_width > 2000)
@@ -97,27 +136,26 @@ void motor_drive(struct channel channel, uint16_t pulse_width)
         pwm_gpio_to_slice_num(channel.pin[0]);  // both forward and reverse pins are on the same slice, so just use pin[0] to get slice number
 
     if (pulse_width > 1500 + DEADBAND)
-    {
-        // forward
+    {   // forward
         uint16_t level =
             ((uint64_t)(pulse_width - 1500) * (servo_wrap[slice_num] + 1)) / 500;  // convert pulse_width to PWM level based on frequency and wrap
         pwm_set_gpio_level(channel.pin[0], level);                                 // output full pulse width range for ESC control on forward pin
         pwm_set_gpio_level(channel.pin[1], 0);                                     // set reverse pin to 0
     }
     else if (pulse_width < 1500 - DEADBAND)
-    {
-        // reverse
+    {   // reverse
         uint16_t level = ((uint64_t)(1500 - pulse_width) * (servo_wrap[slice_num] + 1)) / 500;  // convert pulse_width to PWM
         pwm_set_gpio_level(channel.pin[1], level);  // output full pulse width range for ESC control on reverse pin
         pwm_set_gpio_level(channel.pin[0], 0);      // set forward pin to 0
     }
     else
-    {                                               // within deadband around neutral - set both forward and reverse pins to 0 to prevent jitter
-
+    {
+        // within deadband around neutral - set both forward and reverse pins to 0 to prevent jitter
         pwm_set_gpio_level(channel.pin[0], 0);      // set forward pin to 0
         pwm_set_gpio_level(channel.pin[1], 0);      // set reverse pin to 0
     }
 }
+#endif // NEVER
 
 /*
  * Initialise hardware, set up iBus read loop on core 1,
