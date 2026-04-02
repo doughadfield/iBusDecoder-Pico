@@ -45,7 +45,7 @@ pico_generate_pio_header(iBusReceiver ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_usb(iBusReceiver 1)
-# pico_enable_stdio_uart(iBusReceiver 0)
+pico_enable_stdio_uart(iBusReceiver 0) # disable initialisation of UART0 in stdio_init_all()
 
 # Add the standard library to the build
 target_link_libraries(iBusReceiver
