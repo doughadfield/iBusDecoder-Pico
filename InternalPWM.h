@@ -19,7 +19,8 @@
 #include <stdbool.h>
 #include "hardware/pwm.h"
 
-#define SERVO_FREQ_HZ   250
+// #define SERVO_FREQ_HZ   250     // 250Hz for servo control (4ms period, which allows for pulse widths up to 2.5ms - suitable for most modern digital servos)
+#define SERVO_FREQ_HZ   80     // sound generator can't do 250Mhz; 80 is highest reliable frequency
 #define MOTOR_FREQ_HZ   10415 // 10kHz for ESC control (10415 equiates to wrap=12000)
 #define SERVO_MAX_FREQ_HZ 400   // above this, we assume it's an ESC driving a motor
 // full 180degree range for modern digital servos is typically around 500–2500 µs

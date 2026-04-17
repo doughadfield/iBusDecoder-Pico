@@ -31,7 +31,6 @@
 #include "Ibus.h"
 #include "InternalPWM.h"
 #include "blink.pio.h"
-#include "pca9685.h"
 #include "rgbled.h"
 
 #define VBAT 28  // Analog input for battery voltage monitoring
@@ -41,6 +40,7 @@
 
 #ifdef I2C_ENABLE
 // I2C defines for PCA9685 board
+#include "pca9685.h"
 #define I2C_ID i2c1
 #define I2C_SDA_PIN 26
 #define I2C_SCL_PIN 27
@@ -61,7 +61,7 @@ enum ChannelType
 // struct to hold channel configuration - type and pin assignment
 struct channel
 {
-    uint8_t Chan_No;        // iBus channel number (0-13)
+    uint8_t Chan_No;        // iBus channel number (0-13)   // Note: channel 0 corresponds to RC Channel 1 on the transmitter, channel 1 to RC Channel 2, etc.
     enum ChannelType type;  // Type of output (MOTOR, SERVO, SWITCH)
     uint8_t pin[2];         // GPIO pin(s) for this channel (1 pin for SERVO, 2 pins for MOTOR for forward/reverse control)
     uint8_t num_pins;       // Number of pins used (1 for SERVO, 2 for MOTOR)
@@ -140,13 +140,13 @@ void init_channels(void)
         switch (channels[i].type)
         {
         case MOTOR:
-            hwpwm_init(channels[i].pin, channels[i].num_pins, MOTOR_FREQ_HZ);  // initialise PWM pins for this motor channel at 10kHz for ESC control
+            hwpwm_init(channels[i].pin, channels[i].num_pins, MOTOR_FREQ_HZ);  // initialise PWM pins for this motor channel at high frequency for ESC control
             pwm_set_gpio_level(channels[i].pin[0], 0);                         // Forward pin off
             pwm_set_gpio_level(channels[i].pin[1], 0);                         // Reverse pin off
             break;
 
         case SERVO:
-            hwpwm_init(channels[i].pin, channels[i].num_pins, SERVO_FREQ_HZ);  // initialise PWM pin for this servo channel at 250Hz for servo control
+            hwpwm_init(channels[i].pin, channels[i].num_pins, SERVO_FREQ_HZ);  // initialise PWM pin for this servo channel at servo frequency for servo control
             pwm_set_gpio_level(channels[i].pin[0], 0);                         // servo output off (0 pulse width) on startup
             break;
 
@@ -216,6 +216,11 @@ int main()
                 {
                     printf("S ");
                     servo_set_pulse_us(channels[i].pin[0], ibus_channels[i]);  // Set internal pwm servo to the value of ibus channel
+                }
+                else if (channels[i].type == SWITCH)
+                {
+                    printf("W ");
+                    gpio_put(channels[i].pin[0], ibus_channels[i] > 1500 ? 1 : 0);  // Set switch GPIO high if channel value above 1500, otherwise low
                 }
             }
             printf("\n");
