@@ -227,7 +227,7 @@ int main()
                 {
                     // for motor channels, we want to output the full PWM pulse width range for each motor (pin A for forward, pin B for reverse)
                     // with 1000-2000 input mapped to 0-wrap value of slice
-                    printf("M ");
+                    printf("%dM ", i+1);
                     if(RC_Channels[4] < 1400) // arm switch is off
                     {                           // so disable motor
                         pwm_set_gpio_level(channels[i].pin[0], 0);
@@ -238,12 +238,12 @@ int main()
                 }
                 else if (channels[i].type == SERVO)
                 {
-                    printf("S ");
+                    printf("%dS ", i+1);
                     servo_set_pulse_us(channels[i].pin[0], RC_Channels[i]);  // Set internal pwm servo to the value of ibus channel
                 }
                 else if (channels[i].type == SWITCH)
                 {
-                    printf("W ");
+                    printf("%dW ", i+1);
                     gpio_put(channels[i].pin[0], RC_Channels[i] > 1500 ? 1 : 0);  // Set switch GPIO high if channel value above 1500, otherwise low
                 }
             }

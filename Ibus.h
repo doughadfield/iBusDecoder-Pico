@@ -5,20 +5,18 @@
 // ─────────────────────────────────────────────
 // Configuration
 // ─────────────────────────────────────────────
-#include "hardware/uart.h"
 
 #define IBUS_NUM_CHANNELS 14
 // UART defines
 // UART0 for Rx from receiver, UART1 for Tx to receiver (telemetry)
 #define iBus_UART uart0
 #define Telemetry_UART uart1
-#define iBus_BAUDRATE 115200    // Baud rate the same for both iBus and telemetry
+#define iBus_BAUDRATE 115200  // Baud rate the same for both iBus and telemetry
 // Use pin 29 for UART0 RX (iBus receiver)
 #define iBus_RX_PIN 29
 // Use pins 4 and 5 for UART1 (telemetry to receiver)
 #define Telemetry_TX_PIN 4
 #define Telemetry_RX_PIN 5
-
 
 // Initialise UART and start iBus receiver on Core 1
 extern void Ibus_Init(void);
