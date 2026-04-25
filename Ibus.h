@@ -5,7 +5,6 @@
 // ─────────────────────────────────────────────
 // Configuration
 // ─────────────────────────────────────────────
-#include "pico/multicore.h"
 #include "hardware/uart.h"
 
 #define IBUS_NUM_CHANNELS 14
@@ -23,12 +22,13 @@
 
 // Initialise UART and start iBus receiver on Core 1
 extern void Ibus_Init(void);
+extern void ibus_decode_loop(void);  // Main loop for Core 1 to read and parse iBus data
 
 // Global array holding the latest valid channel values (1000–2000 μs typical)
-extern volatile uint16_t ibus_channels[IBUS_NUM_CHANNELS];
+extern volatile uint16_t RC_Channels[IBUS_NUM_CHANNELS];
 
 // Flag to indicate new valid data is available (optional - for main core polling)
-extern volatile uint8_t ibus_new_data_flag;
+extern volatile uint8_t RC_new_data_flag;
 
 // send telemetry response if we receive a valid query on the telemetry UART
 extern void telemetry_send(void);

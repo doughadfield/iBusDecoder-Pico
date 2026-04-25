@@ -10,7 +10,7 @@
 #define IBUS_PACKET_LENGTH 32
 
 // Global array holding the latest valid channel values (1000–2000 μs typical)
-volatile uint16_t ibus_channels[IBUS_NUM_CHANNELS] = {[0 ... IBUS_NUM_CHANNELS-1] = 1500};  // initialise all channels to 1500 (neutral)
+volatile uint16_t RC_channels[IBUS_NUM_CHANNELS] = {[0 ... IBUS_NUM_CHANNELS-1] = 1500};  // initialise all channels to 1500 (neutral)
 
 // Flag to indicate new valid data is available (optional - for main core polling)
 volatile uint8_t ibus_new_data_flag = -1;  // -1 = no data yet, 0 = data read, >0 = we've missed an iBus packet
@@ -55,7 +55,7 @@ static bool ibus_parse_packet(const uint8_t *buf, uint16_t *channels_out)
 // Core 1 – iBus receiver loop (no interrupts necessary)
 // ─────────────────────────────────────────────
 
-void core1_entry(void)
+void ibus_decode_loop(void)
 {
     uint8_t rx_buffer[IBUS_PACKET_LENGTH];
     uint rx_idx = 0;
@@ -92,7 +92,7 @@ void core1_entry(void)
                     // Copy to global array (volatile for safe access from core 0)
                     for (int i = 0; i < 14; i++)
                     {
-                        ibus_channels[i] = temp_channels[i];
+                        RC_channels[i] = temp_channels[i];
                     }
                     ibus_new_data_flag = 0;  // Reset flag to indicate new data is available for main core
                 }
@@ -113,8 +113,6 @@ void Ibus_Init()
     // Initialize UART0 for iBus (115200 8N1)
     uart_init(iBus_UART, iBus_BAUDRATE);
     gpio_set_function(iBus_RX_PIN, GPIO_FUNC_UART);
-
-    // Optional: enable UART FIFO if you want slightly less CPU usage
     uart_set_fifo_enabled(iBus_UART, true);
 
     // Initialize UART1 for telemetry (TX and RX for queries)
@@ -123,12 +121,8 @@ void Ibus_Init()
     gpio_set_function(Telemetry_RX_PIN, GPIO_FUNC_UART);
     uart_set_fifo_enabled(Telemetry_UART, true);
 
-    ibus_channels[2] = 1000;  // Set throttle channel to minimum for safety on startup
+    RC_Channels[2] = 1000;  // Set throttle channel to minimum for safety on startup
 
-    // Start iBus receiver on Core 1
-    multicore_launch_core1(core1_entry);
-
-    printf("Core 1 running iBus receiver - polling channels...\n");
 }
 
 // ─────────────────────────────────────────────

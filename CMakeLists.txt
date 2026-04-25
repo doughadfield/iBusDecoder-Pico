@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(iBusReceiver iBusReceiver.c pca9685.c Ibus.c InternalPWM.c rgbled.c)
+add_executable(iBusReceiver iBusReceiver.c pca9685.c Ibus.c InternalPWM.c rgbled.c crsf.c)
 
 pico_set_program_name(iBusReceiver "iBusReceiver")
 pico_set_program_version(iBusReceiver "0.1")
