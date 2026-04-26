@@ -35,29 +35,29 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(iBusReceiver iBusReceiver.c pca9685.c Ibus.c InternalPWM.c rgbled.c crsf.c)
+add_executable(RC_Decoder RC_Decoder.c pca9685.c Ibus.c InternalPWM.c rgbled.c crsf.c)
 
-pico_set_program_name(iBusReceiver "iBusReceiver")
-pico_set_program_version(iBusReceiver "0.1")
+pico_set_program_name(RC_Decoder "RC_Decoder")
+pico_set_program_version(RC_Decoder "0.1")
 
 # Generate PIO header
-pico_generate_pio_header(iBusReceiver ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
+pico_generate_pio_header(RC_Decoder ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_usb(iBusReceiver 1)
-pico_enable_stdio_uart(iBusReceiver 0) # disable initialisation of UART0 in stdio_init_all()
+pico_enable_stdio_usb(RC_Decoder 1)
+pico_enable_stdio_uart(RC_Decoder 0) # disable initialisation of UART0 in stdio_init_all()
 
 # Add the standard library to the build
-target_link_libraries(iBusReceiver
+target_link_libraries(RC_Decoder
         pico_stdlib)
 
 # Add the standard include files to the build
-target_include_directories(iBusReceiver PRIVATE
+target_include_directories(RC_Decoder PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
 )
 
 # Add any user requested libraries
-target_link_libraries(iBusReceiver 
+target_link_libraries(RC_Decoder 
         hardware_i2c
         hardware_pio
         hardware_timer
@@ -67,5 +67,5 @@ target_link_libraries(iBusReceiver
         pico_multicore
         )
 
-pico_add_extra_outputs(iBusReceiver)
+pico_add_extra_outputs(RC_Decoder)
 
