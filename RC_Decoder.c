@@ -1,9 +1,13 @@
 
 /*
- * iBusReceiver.c
+ * RC_Decoder.c
  *
- * Receives iBus data from an RC receiver and uses it to control servos via both the internal PWM hardware and an external PCA9685 board. Also
- * includes examples of using the PIO for blinking an LED and using timers.
+ * Receives channel data from an RC receiver and uses it to control servos, motors and switches
+ * via both the internal PWM hardware and an external PCA9685 board.
+ * Also includes examples of using the PIO for blinking an LED and using timers.
+ *
+ * Supports both iBus and CRSF receivers (selectable via #define at top of file).
+ * 
  * Pinouts for RP2040:
  * 0-3: PWM outputs to servos (GPIO 0,1 on slice 0; 2,3 on slice 1)
  * 4,5: UART1 (TX,RX) for telemetry output to receiver (optional - PWM slice 2 if not using telemetry)
@@ -13,7 +17,8 @@
  *      17 on slice 0(pinB); 18,19 on slice 1; 20,21 on slice 2; 22,23 on * slice 3; 24,25 on slice 4)
  * 26,27: Analog inputs or I2C1 for PCA9685 board if no additional analog inputs needed)
  * 28: Analog input for telemetry (optional - for reading battery voltage )
- * 29: UART0 (RX) for iBus input (only needs one RX pin - TX not used for iBus)
+ * 29: UART0 (RX) for iBus/CRSF input (only needs one RX pin - TX not used for iBus)
+ * Optionally UART1 (GPIO 4,5) can be used for telemetry output to receiver if supported by receiver and desired 
  *
  * specific whole slices can be set for brushed motor ESC control if desired
  *               faster update rate, full pwm range (0-100% duty cycle)
@@ -55,11 +60,11 @@
 #ifdef CRSF
 #include "crsf.h"
 #undef IBUS
-#define NUM_CHANNELS CRSF_NUM_CHANNELS
+#define NUM_CHANNELS CRSF_NUM_CHANNELS  // CRSF supports up to 16 channels
 #elif defined(IBUS)
 #include "Ibus.h"
 #undef CRSF
-#define NUM_CHANNELS IBUS_NUM_CHANNELS
+#define NUM_CHANNELS IBUS_NUM_CHANNELS  // iBus supports up to 14 channels
 #else
 #error "Please define either CRSF or IBUS to specify the receiver protocol being used"
 #endif
@@ -75,11 +80,11 @@ enum ChannelType
 // struct to hold channel configuration - type and pin assignment
 struct channel
 {
-    uint8_t Chan_No;        // iBus channel number (0-13)   // Note: channel 0 corresponds to RC Channel 1 on the transmitter, channel 1 to RC Channel 2, etc.
+    uint8_t Chan_No;        // RX channel number  Note: channel 0 corresponds to RC Channel 1 on the transmitter, channel 1 to RC Channel 2, etc.
     enum ChannelType type;  // Type of output (MOTOR, SERVO, SWITCH)
     uint8_t pin[2];         // GPIO pin(s) for this channel (1 pin for SERVO, 2 pins for MOTOR for forward/reverse control)
     uint8_t num_pins;       // Number of pins used (1 for SERVO, 2 for MOTOR)
-} channels[] = {
+} channels[] = {            // Supports 14 channels with IBUS, 16 channels with CRSF (ELRS)
     {0, MOTOR, {0, 1}, 2},  // Tank left track
     {1, MOTOR, {2, 3}, 2},  // Tank right track
     {2, MOTOR, {6, 7}, 2},  // Tank turret rotation
@@ -178,8 +183,8 @@ void init_channels(void)
 
 
 /*
- * Initialise hardware, set up iBus read loop on core 1,
- * then in the main loop check for new iBus data and update servo positions accordingly,
+ * Initialise hardware, set up iBus/CRSF read loop on core 1,
+ * then in the main loop check for new RX data and update servo positions accordingly,
  * as well as checking for telemetry queries and responding if needed.
  *
  */
