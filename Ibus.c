@@ -9,12 +9,6 @@
 // iBus packet is always 32 bytes
 #define IBUS_PACKET_LENGTH 32
 
-// Global array holding the latest valid channel values (1000–2000 μs typical)
-volatile uint16_t RC_channels[IBUS_NUM_CHANNELS] = {[0 ... IBUS_NUM_CHANNELS - 1] = 1500};  // initialise all channels to 1500 (neutral)
-
-// Flag to indicate new valid data is available (optional - for main core polling)
-volatile uint8_t ibus_new_data_flag = -1;  // -1 = no data yet, 0 = data read, >0 = we've missed an iBus packet
-
 // ─────────────────────────────────────────────
 // iBus packet validation & parsing
 // ─────────────────────────────────────────────
@@ -41,7 +35,7 @@ static bool ibus_parse_packet(const uint8_t *buf, uint16_t *channels_out)
     }
 
     // Extract 14 channels (each 16-bit little-endian)
-    for (int i = 0; i < 14; i++)
+    for (int i = 0; i < IBUS_NUM_CHANNELS; i++)
     {
         //        channels_out[i] = (buf[3 + i*2 + 1] << 8) | buf[3 + i*2];
         int offset = 2 + i * 2;
@@ -90,11 +84,11 @@ void ibus_decode_loop(void)
                 if (ibus_parse_packet(rx_buffer, temp_channels))  // iBus packet is valid, copy to global array for main core to read
                 {
                     // Copy to global array (volatile for safe access from core 0)
-                    for (int i = 0; i < 14; i++)
+                    for (int i = 0; i < IBUS_NUM_CHANNELS; i++)
                     {
-                        RC_channels[i] = temp_channels[i];
+                        RC_Channels[i] = temp_channels[i];
                     }
-                    ibus_new_data_flag = 0;  // Reset flag to indicate new data is available for main core
+                    RC_new_data_flag = 0;  // Reset flag to indicate new data is available for main core
                 }
                 // Reset for next packet
                 rx_idx = 0;

@@ -18,9 +18,6 @@
 // Global array holding the latest valid channel values (1000–2000 μs typical)
 volatile uint16_t RC_Channels[CRSF_NUM_CHANNELS] = {[0 ... CRSF_NUM_CHANNELS - 1] = 1500};  // initialise all channels to 1500 (neutral)
 
-// Flag to indicate new valid data is available (optional - for main core polling)
-volatile uint8_t RC_new_data_flag = -1;
-
 uint8_t crc8(const uint8_t *ptr, uint8_t len)
 {
     uint8_t crc = 0;

@@ -76,6 +76,9 @@
 #error "Please define either CRSF or IBUS to specify the receiver protocol being used"
 #endif
 
+// Flag to indicate new valid data is available
+volatile uint8_t RC_new_data_flag = -1;  // -1 = no data yet, 0 = data read, >0 = we've missed an iBus packet
+
 // enum to define channel types
 enum ChannelType
 {
@@ -100,7 +103,7 @@ struct channel
     {3, REV_MOTOR, {6, 7}, 2},  // Ch 4:  Tank turret rotation
     {4, SWITCH, {9}, 1},        // Ch 5:  Motor arm
     {5, SWITCH, {10}, 1},       // Ch 6:  Gun fire
-    {6, SWITCH, {11}, 1},       // Ch 7:  Spare
+    {6, SWITCH, {11}, 1},       // Ch 7:  LED Headlights
     {7, SERVO, {12}, 1},        // Ch 8:  Spare
     {8, SERVO, {13}, 1},        // Ch 9:  Spare
     {9, SERVO, {14}, 1},        // Ch 10: Spare
@@ -296,7 +299,7 @@ int main()
 #ifdef DEBUG
         sleep_ms(200);                     // Slow down loop for debugging (comment out or reduce delay for normal operation)
 #else
-        sleep_ms(10);                     // RC packets repeat at around 7ms intervals
+        sleep_ms(2);                       // Slow down loop slightly to ensure we don't miss RC packets
 #endif // DEBUG
     }
     return 0;
