@@ -11,6 +11,7 @@
 #define CRSF_BAUD_RATE 420000
 #define CRSF_TX_PIN 4   // UART1 is used for telemetry output
 #define CRSF_RX_PIN 29  // UART0 RX pin for CRSF input
+#define ARM_CHANNEL 5  // Channel number for motor arming switch
 
 // CRSF defines
 #define CRSF_MAX_LENGTH 64    // CRSF Maximum packet Length

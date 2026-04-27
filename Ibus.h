@@ -17,6 +17,7 @@
 // Use pins 4 and 5 for UART1 (telemetry to receiver)
 #define Telemetry_TX_PIN 4
 #define Telemetry_RX_PIN 5
+#define ARM_CHANNEL 5  // Channel number for motor arming switch
 
 // Initialise UART and start iBus receiver on Core 1
 extern void Ibus_Init(void);

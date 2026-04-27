@@ -9,6 +9,9 @@
 #include "pico/stdlib.h"
 #include <stdio.h>
 #include "crsf.h"
+#ifdef TELEMETRY
+#include "adc.h"
+#endif  // TELEMETRY
 
 #define TIMEOUT_US 100  // 100µs is plenty safe for 420k baud (byte = 24µs)
 
@@ -79,8 +82,9 @@ void crsf_init(void)
     gpio_set_function(CRSF_RX_PIN, GPIO_FUNC_UART);
     uart_set_fifo_enabled(CRSF_UART_RX, true);
 #ifdef TELEMETRY
-    uart_init(CRSF_UART_TX, CRSF_BAUD_RATE);
-    gpio_set_function(CRSF_TX_PIN, GPIO_FUNC_UART);
+    init_adc();                                          // Initialize ADC for battery voltage monitoring
+    uart_init(CRSF_UART_TX, CRSF_BAUD_RATE);            // Set up our TX UART for outgoing CRSF telemetry (battery voltage)
+    gpio_set_function(CRSF_TX_PIN, GPIO_FUNC_UART);         // Set TX pin function to UART
     uart_set_fifo_enabled(CRSF_UART_TX, true);
 #endif  // TELEMETRY
 }
@@ -90,6 +94,8 @@ uint8_t crsf_packet[CRSF_BATTERY_FRAME_SIZE];
 
 void crsf_telemetry_send(uint8_t *packet_buffer)
 {
+    uint32_t mv = get_smoothed_mv();
+    crsf_battery_packet(crsf_packet, mv);  // Send voltage in mV to the packet function
     uart_write_blocking(CRSF_UART_TX, packet_buffer, CRSF_BATTERY_FRAME_SIZE);
 }
 #endif  // TELEMETRY

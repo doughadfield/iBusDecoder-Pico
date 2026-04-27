@@ -14,9 +14,9 @@
  * 6-15: PWM outputs to servos (GPIO 6,7 on slice 3; 8,9 on slice 4; 10,11 on slice 5; 12,13 on slice 6; 14,15 on slice 7)
  * 16: onboard RGB LED (dedicated - no external pin)
  * 17-25: Optional additional PWM outputs to servos (from solder pads on bottom of board)
- *      17 on slice 0(pinB); 18,19 on slice 1; 20,21 on slice 2; 22,23 on * slice 3; 24,25 on slice 4)
+ *      17 on pwm slice 0(pinB); 18,19 on slice 1; 20,21 on slice 2; 22,23 on * slice 3; 24,25 on slice 4)
  * 26,27: Analog inputs or I2C1 for PCA9685 board if no additional analog inputs needed)
- * 28: Analog input for telemetry (optional - for reading battery voltage )
+ * 28: Analog input for telemetry (if TELEMETRY is defined - for reading battery voltage )
  * 29: UART0 (RX) for iBus/CRSF input (only needs one RX pin - TX not used for iBus)
  * Optionally UART1 (GPIO 4,5) can be used for telemetry output to receiver if supported by receiver and desired
  *
@@ -30,14 +30,19 @@
 #include "hardware/clocks.h"
 #include "hardware/i2c.h"
 #include "hardware/pio.h"
+#include "hardware/watchdog.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 #include <stdio.h>
 
 #include "InternalPWM.h"
-#include "adc.h"
 #include "blink.pio.h"
 #include "rgbled.h"
+
+// #define DEBUG  // Enable debug print statements (comment out to disable)
+#ifndef DEBUG
+    #define printf(fmt, ...) ((void)0)
+#endif
 
 #define VBAT 28  // Analog input for battery voltage monitoring
 
@@ -74,7 +79,8 @@
 // enum to define channel types
 enum ChannelType
 {
-    MOTOR,
+    REV_MOTOR,  // bidirectional (REVersable) motor (ESC) using two pins per motor for forward/reverse control
+    UNI_MOTOR,  // unidirectional motor (ESC) using one pin per motor (only forward control)
     SERVO,
     SWITCH
 };
@@ -82,28 +88,28 @@ enum ChannelType
 // struct to hold channel configuration - type and pin assignment
 struct channel
 {
-    uint8_t Chan_No;        // RX channel number  Note: channel 0 corresponds to RC Channel 1 on the transmitter, channel 1 to RC Channel 2, etc.
-    enum ChannelType type;  // Type of output (MOTOR, SERVO, SWITCH)
-    uint8_t pin[2];         // GPIO pin(s) for this channel (1 pin for SERVO, 2 pins for MOTOR for forward/reverse control)
-    uint8_t num_pins;       // Number of pins used (1 for SERVO, 2 for MOTOR)
+    uint8_t Chan_No;        // RC channel number  Note: channel 0 corresponds to RC Channel 1 on the transmitter, channel 1 to RC Channel 2, etc.
+    enum ChannelType type;  // Type of output (REV_MOTOR, UNI_MOTOR, SERVO, SWITCH)
+    uint8_t pin[2];         // GPIO pin(s) for this channel (1 pin for SERVO, SWITCH, UNI_MOTOR; 2 pins for REV_MOTOR for forward/reverse control)
+    uint8_t num_pins;       // Number of pins used (1 for SERVO, SWITCH, UNI_MOTOR; 2 for REV_MOTOR)
 } channels[] = {
     // Supports 14 channels with IBUS, 16 channels with CRSF (ELRS)
-    {0, MOTOR, {0, 1}, 2},  // Tank left track
-    {1, MOTOR, {2, 3}, 2},  // Tank right track
-    {2, MOTOR, {6, 7}, 2},  // Tank turret rotation
-    {3, SERVO, {8}, 1},     // Gun elevation
-    {4, SWITCH, {9}, 1},    // Motor arm
-    {5, SWITCH, {10}, 1},   // Gun fire
-    {6, SWITCH, {11}, 1},   // Spare
-    {7, SERVO, {12}, 1},    // Spare
-    {8, SERVO, {13}, 1},    // Spare
-    {9, SERVO, {14}, 1},    // Spare
-    {10, SERVO, {15}, 1},   // Spare
-    {11, SWITCH, {17}, 1},  // These pins are on solder pads on the bottom of the board
-    {12, SWITCH, {18}, 1},  // These pins are on solder pads on the bottom of the board
-    {13, SWITCH, {19}, 1},  // These pins are on solder pads on the bottom of the board
-    {14, SWITCH, {20}, 1},  // These pins are on solder pads on the bottom of the board
-    {15, SWITCH, {21}, 1}   // These pins are on solder pads on the bottom of the board
+    {0, REV_MOTOR, {0, 1}, 2},  // Ch 1:  Tank left track
+    {1, REV_MOTOR, {2, 3}, 2},  // Ch 2:  Tank right track
+    {2, SERVO, {8}, 1},         // Ch 3:  Gun elevation
+    {3, REV_MOTOR, {6, 7}, 2},  // Ch 4:  Tank turret rotation
+    {4, SWITCH, {9}, 1},        // Ch 5:  Motor arm
+    {5, SWITCH, {10}, 1},       // Ch 6:  Gun fire
+    {6, SWITCH, {11}, 1},       // Ch 7:  Spare
+    {7, SERVO, {12}, 1},        // Ch 8:  Spare
+    {8, SERVO, {13}, 1},        // Ch 9:  Spare
+    {9, SERVO, {14}, 1},        // Ch 10: Spare
+    {10, SERVO, {15}, 1},       // Ch 11: Spare
+    {11, SWITCH, {17}, 1},      // Ch 12: These pins are on solder pads on the bottom of the board
+    {12, SWITCH, {18}, 1},      // Ch 13: These pins are on solder pads on the bottom of the board
+    {13, SWITCH, {19}, 1},      // Ch 14: These pins are on solder pads on the bottom of the board
+    {14, SWITCH, {20}, 1},      // Ch 15: These pins are on solder pads on the bottom of the board
+    {15, SWITCH, {21}, 1}       // Ch 16: These pins are on solder pads on the bottom of the board
 };
 
 /*
@@ -113,44 +119,51 @@ struct channel
  * Added pulse stretch to enable full stick control range for ESCs.
  */
 
-#define DEADBAND 10     // noise value around midband from transmitter
+#define DEADBAND 10     // noise value around zero or midband from transmitter
 #define MIN_MOTOR 6600  // value at which motor just starts moving
 
 void motor_drive(struct channel channel, uint16_t pulse_width)
 {
+    if (RC_Channels[ARM_CHANNEL - 1] < 1400)  // arm switch is OFF (array index one less than channel number)
+    {
+        // Motor is disarmed, set outputs to 0 (off)
+        pwm_set_gpio_level(channel.pin[0], 0);      // Forward pin off
+        if (channel.type == REV_MOTOR)
+            pwm_set_gpio_level(channel.pin[1], 0);  // Reverse pin off
+        return;
+    }
     // Constrain input to valid servo range
-    if (pulse_width < 1000)
-        pulse_width = 1000;
-    if (pulse_width > 2000)
-        pulse_width = 2000;
+    if (pulse_width < 1000) pulse_width = 1000;
+    if (pulse_width > 2000) pulse_width = 2000;
 
-    uint slice_num = pwm_gpio_to_slice_num(channel.pin[0]);
+    uint32_t throttle = pulse_width - 1000;  // for uni-directional motor, throttle is directly proportional to pulse width above 1000µs (1000µs = off, 2000µs = full forward)
+    if (channel.type == REV_MOTOR)
+    {
+        if (pulse_width > 1500)               // forward direction
+            throttle = (pulse_width * 2) - 3000;  // for bi-directional motor, stretch 0-500µs range to 0-1000µs (centre is 1500)
+        else
+            throttle = 1000 - ((pulse_width * 2) - 2000);       // reverse, so subtract the pulse value from 1000 to get a positive throttle value for reverse direction
+    }
+    throttle = throttle < DEADBAND ? 0 : throttle;                           // zero throttle within deadband
 
-    if (pulse_width > 1500 + DEADBAND)
+#define SLICENUM (pwm_gpio_to_slice_num(channel.pin[0]))                     // determine PWM hardware slice to get servo_wrap value
+    uint16_t level = 0;                                                      // level is 0 if within deadband
+    if (throttle > 0)
+        level = MIN_MOTOR + (throttle * (servo_wrap[SLICENUM] + 1 - MIN_MOTOR)) / 1000;  // scale throttle to PWM level based on servo_wrap for the slice
+
+    if (channel.type == UNI_MOTOR || pulse_width > 1500)  // both uni-directional motors and bi-directional motors with forward throttle use forward pin
     {
         // === FORWARD ===
-        uint16_t throttle = pulse_width - 1500;     // 0 to 500
-        uint16_t level = MIN_MOTOR + ((uint64_t)throttle * (servo_wrap[slice_num] + 1 - MIN_MOTOR)) / 500;
-
         pwm_set_gpio_level(channel.pin[0], level);  // Forward pin
         pwm_set_gpio_level(channel.pin[1], 0);      // Reverse pin off
-        printf("%u ", level);
-    }
-    else if (pulse_width < 1500 - DEADBAND)
-    {
-        // === REVERSE ===
-        uint16_t throttle = 1500 - pulse_width;     // 0 to 500
-        uint16_t level = MIN_MOTOR + ((uint64_t)throttle * (servo_wrap[slice_num] + 1 - MIN_MOTOR)) / 500;
-
-        pwm_set_gpio_level(channel.pin[1], level);  // Reverse pin
-        pwm_set_gpio_level(channel.pin[0], 0);      // Forward pin off
-        printf("%u ", level);
+        printf("FWD:%5u ", level);
     }
     else
     {
-        // Within neutral deadband → stop both directions
-        pwm_set_gpio_level(channel.pin[0], 0);
-        pwm_set_gpio_level(channel.pin[1], 0);
+        // === REVERSE ===
+        pwm_set_gpio_level(channel.pin[1], level);  // Reverse pin
+        pwm_set_gpio_level(channel.pin[0], 0);      // Forward pin off
+        printf("REV:%5u ", level);
     }
 }
 
@@ -163,17 +176,24 @@ void init_channels(void)
     {
         switch (channels[i].type)
         {
-        case MOTOR:
-            hwpwm_init(channels[i].pin, channels[i].num_pins,
-                       MOTOR_FREQ_HZ);                  // initialise PWM pins for this motor channel at high frequency for ESC control
+        case REV_MOTOR:
+            hwpwm_init(channels[i].pin, channels[i].num_pins, MOTOR_FREQ_HZ);
             pwm_set_gpio_level(channels[i].pin[0], 0);  // Forward pin off
             pwm_set_gpio_level(channels[i].pin[1], 0);  // Reverse pin off
+            RC_Channels[i] = 1500;                      // Set (bi-directional) motor channel to centre (off) on startup
+            break;
+
+        case UNI_MOTOR:
+            hwpwm_init(channels[i].pin, channels[i].num_pins, MOTOR_FREQ_HZ);
+            pwm_set_gpio_level(channels[i].pin[0], 0);  // Forward pin off
+            RC_Channels[i] = 1000;                      // Set (uni-directional) motor channel to minimum (off) on startup
             break;
 
         case SERVO:
             hwpwm_init(channels[i].pin, channels[i].num_pins,
                        SERVO_FREQ_HZ);                  // initialise PWM pin for this servo channel at servo frequency for servo control
             pwm_set_gpio_level(channels[i].pin[0], 0);  // servo output off (0 pulse width) on startup
+            RC_Channels[i] = 1500;                      // Set servo channel to centre position on startup
             break;
 
         case SWITCH:
@@ -188,23 +208,27 @@ void init_channels(void)
 
 /*
  * Initialise hardware, set up iBus/CRSF read loop on core 1,
- * then in the main loop check for new RX data and update servo positions accordingly,
+ * then in the main loop check for new RC data and update servo positions accordingly,
  * as well as checking for telemetry queries and responding if needed.
  *
  */
 int main()
 {
     stdio_init_all();
-    init_channels();                                     // initialise all channel outputs
-    sleep_ms(1000);                                      // Wait for usb serial to settle after reset
+    init_channels();                                                 // initialise all channel outputs
+#ifdef DEBUG
+    sleep_ms(1000);                                                  // Wait for usb serial to settle after reset
 
-    printf("START of PROGRAM\n");                        // DEBUG indication that program has started
+    printf("START of PROGRAM\n");                                    // DEBUG indication that program has started
+    if (watchdog_caused_reboot())
+    {
+        printf("! - System recovered from a Watchdog Reset - !\n");  // DEBUG
+    }
+#endif // DEBUG
 
 #ifdef RGBLED
     ws2812_pio_init(WS2812_PIO, WS2812_SM, WS2812_PIN);  // ws2812 output pio state machine
 #endif                                                   // RGBLED
-
-    init_adc();                                          // Initialize ADC for battery voltage monitoring
 
 #ifdef CRSF
     crsf_init();                                         // Start CRSF receiver on Core 1
@@ -215,54 +239,47 @@ int main()
 #endif                                                   // CRSF or IBUS
 
     printf("Core 1 running RC receiver - polling channels...\n");
+#ifdef DEBUG
+    watchdog_enable(2000, true);                          // Lengthen watchdog timeout to 2 seconds for debugging
+#else
+    watchdog_enable(200, true);                          // Enable watchdog with 200ms timeout
+#endif // DEBUG
 
     while (true)
     {
-        if (RC_new_data_flag == 0)  // Flag gets reset when new iBus packet recieved on core 1)
+        if (RC_new_data_flag == 0)  // Flag gets reset when new RC packet recieved on core 1)
         {
-            RC_new_data_flag++;     // Increment flag to indicate we've processed the new iBus data
-            if (RC_Channels[2] < 900)
-            {  // FAILSAFE: if throttle channel is below 900 (assuming 1000-2000 range), reset timeout alarm to prevent timeout actions (comment out
-               // if not using alarm timeout)
-                put_pixel(RED);  // flash red on the RGB LED to indicate failsafe state
-            }
-            else
-            {
-                put_pixel(GREEN);  // flash green on the RGB LED to indicate normal operation (comment out if not using RGB LED)
-            }
+            RC_new_data_flag++;     // Increment flag to indicate we've processed the new RC data
+            put_pixel(GREEN);       // flash green on the RGB LED to indicate normal operation (comment out if not using RGB LED)
 
             for (uint8_t i = 0; i < NUM_CHANNELS; i++)
             {
-                printf("%4u ", RC_Channels[i]);
-                if (channels[i].type == MOTOR)
+                printf("CH%d:%4u", i + 1, RC_Channels[i]);
+
+                switch (channels[i].type)
                 {
-                    // for motor channels, we want to output the full PWM pulse width range for each motor (pin A for forward, pin B for reverse)
-                    // with 1000-2000 input mapped to 0-wrap value of slice
-                    printf("%dM ", i + 1);
-                    if (RC_Channels[4] < 1400)  // arm switch is off
-                    {                           // so disable motor
-                        pwm_set_gpio_level(channels[i].pin[0], 0);
-                        pwm_set_gpio_level(channels[i].pin[1], 0);
-                    }
-                    else
-                        motor_drive(channels[i], RC_Channels[i]);  // run motor at set speed
-                }
-                else if (channels[i].type == SERVO)
-                {
-                    printf("%dS ", i + 1);
+                case UNI_MOTOR:
+                case REV_MOTOR:
+                    printf("mt ");
+                    motor_drive(channels[i], RC_Channels[i]);  // run motor at set speed
+                    break;
+
+                case SERVO:
+                    printf("sv ");
                     servo_set_pulse_us(channels[i].pin[0], RC_Channels[i]);  // Set internal pwm servo to the value of ibus channel
-                }
-                else if (channels[i].type == SWITCH)
-                {
-                    printf("%dW ", i + 1);
+                    break;
+
+                case SWITCH:
+                    printf("sw ");
                     gpio_put(channels[i].pin[0], RC_Channels[i] > 1500 ? 1 : 0);  // Set switch GPIO high if channel value above 1500, otherwise low
+                    break;
                 }
             }
             printf("\n");
         }
         else
         {
-            if (RC_new_data_flag++ > 10)     // increment flag to indicate we've missed an iBus packet
+            if (RC_new_data_flag++ > 10)     // increment flag to indicate we've missed an RC packet
             {                                // We've missed more than 10 packets, so we're likely in a failsafe condition
                 put_pixel(RED);              // flash red on the RGB LED to indicate FAILSAFE condition
                 if (RC_new_data_flag > 250)  // if we've missed more than 250 packets, reset flag to prevent overflow and keep printing message
@@ -272,13 +289,15 @@ int main()
             }
         }
 #ifdef TELEMETRY
-        uint32_t mv = get_smoothed_mv();
-        uint8_t crsf_packet[CRSF_BATTERY_FRAME_SIZE];
-        crsf_battery_packet(crsf_packet, mv);  // Send voltage in mV to the packet function
-        crsf_telemetry_send(crsf_packet);      // Send telemetry packet with battery voltage to receiver
-#endif                                         // TELEMETRY
+        crsf_telemetry_send(crsf_packet);  // Send telemetry packet with battery voltage to receiver
+#endif                                     // TELEMETRY
+        watchdog_update();                 // Reset watchdog timer before delay
 
-        sleep_ms(100);                         // iBus packets repeat at around 7ms intervals
+#ifdef DEBUG
+        sleep_ms(200);                     // Slow down loop for debugging (comment out or reduce delay for normal operation)
+#else
+        sleep_ms(10);                     // RC packets repeat at around 7ms intervals
+#endif // DEBUG
     }
     return 0;
 }
