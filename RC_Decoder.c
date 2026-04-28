@@ -46,8 +46,8 @@
 
 #define VBAT 28  // Analog input for battery voltage monitoring
 
-#define CRSF     // Receiver is CRSF protocol
-// #define IBUS    // Receiver is iBus protocol (comment out if using CRSF, as code is currently set up to use either CRSF or iBus, but not both at
+// #define CRSF     // Receiver is CRSF protocol
+#define IBUS    // Receiver is iBus protocol (comment out if using CRSF, as code is currently set up to use either CRSF or iBus, but not both at
 // the same time) #define I2C_ENABLE   // Uncomment to enable I2C for controlling PCA9685 board (comment out if using analog inputs on GPIO 26 and 27
 // instead)
 #define RGBLED  // Enable use of on-board RGB LED for status indication (uses PIO program to control LED blinking)
@@ -95,24 +95,25 @@ struct channel
     enum ChannelType type;  // Type of output (REV_MOTOR, UNI_MOTOR, SERVO, SWITCH)
     uint8_t pin[2];         // GPIO pin(s) for this channel (1 pin for SERVO, SWITCH, UNI_MOTOR; 2 pins for REV_MOTOR for forward/reverse control)
     uint8_t num_pins;       // Number of pins used (1 for SERVO, SWITCH, UNI_MOTOR; 2 for REV_MOTOR)
+    uint16_t min_motor;     // Minimum (raw)PWM level for motor to start moving (only used for motor channels, ignored for servos and switches)
 } channels[] = {
     // Supports 14 channels with IBUS, 16 channels with CRSF (ELRS)
-    {0, REV_MOTOR, {0, 1}, 2},  // Ch 1:  Tank left track
-    {1, REV_MOTOR, {2, 3}, 2},  // Ch 2:  Tank right track
-    {2, SERVO, {8}, 1},         // Ch 3:  Gun elevation
-    {3, REV_MOTOR, {6, 7}, 2},  // Ch 4:  Tank turret rotation
-    {4, SWITCH, {9}, 1},        // Ch 5:  Motor arm
-    {5, SWITCH, {10}, 1},       // Ch 6:  Gun fire
-    {6, SWITCH, {11}, 1},       // Ch 7:  LED Headlights
-    {7, SERVO, {12}, 1},        // Ch 8:  Spare
-    {8, SERVO, {13}, 1},        // Ch 9:  Spare
-    {9, SERVO, {14}, 1},        // Ch 10: Spare
-    {10, SERVO, {15}, 1},       // Ch 11: Spare
-    {11, SWITCH, {17}, 1},      // Ch 12: These pins are on solder pads on the bottom of the board
-    {12, SWITCH, {18}, 1},      // Ch 13: These pins are on solder pads on the bottom of the board
-    {13, SWITCH, {19}, 1},      // Ch 14: These pins are on solder pads on the bottom of the board
-    {14, SWITCH, {20}, 1},      // Ch 15: These pins are on solder pads on the bottom of the board
-    {15, SWITCH, {21}, 1}       // Ch 16: These pins are on solder pads on the bottom of the board
+    {0, REV_MOTOR, {0, 1}, 2, 7000},  // Ch 1:  Tank left track
+    {1, REV_MOTOR, {2, 3}, 2, 6600},  // Ch 2:  Tank right track
+    {2, SERVO, {8}, 1, 0},         // Ch 3:  Gun elevation
+    {3, REV_MOTOR, {6, 7}, 2, 4000},  // Ch 4:  Tank turret rotation
+    {4, SWITCH, {9}, 1, 0},        // Ch 5:  Motor arm
+    {5, SWITCH, {10}, 1, 0},       // Ch 6:  Gun fire
+    {6, SWITCH, {11}, 1, 0},       // Ch 7:  LED Headlights
+    {7, SERVO, {12}, 1, 0},        // Ch 8:  Spare
+    {8, SERVO, {13}, 1, 0},        // Ch 9:  Spare
+    {9, SERVO, {14}, 1, 0},        // Ch 10: Spare
+    {10, SERVO, {15}, 1, 0},       // Ch 11: Spare
+    {11, SWITCH, {17}, 1, 0},      // Ch 12: These pins are on solder pads on the bottom of the board
+    {12, SWITCH, {18}, 1, 0},      // Ch 13: These pins are on solder pads on the bottom of the board
+    {13, SWITCH, {19}, 1, 0},      // Ch 14: These pins are on solder pads on the bottom of the board
+    {14, SWITCH, {20}, 1, 0},      // Ch 15: These pins are on solder pads on the bottom of the board
+    {15, SWITCH, {21}, 1, 0}       // Ch 16: These pins are on solder pads on the bottom of the board
 };
 
 /*
@@ -122,8 +123,7 @@ struct channel
  * Added pulse stretch to enable full stick control range for ESCs.
  */
 
-#define DEADBAND 10     // noise value around zero or midband from transmitter
-#define MIN_MOTOR 6600  // value at which motor just starts moving
+#define DEADBAND 7     // noise value around zero or midband from transmitter
 
 void motor_drive(struct channel channel, uint16_t pulse_width)
 {
@@ -149,10 +149,13 @@ void motor_drive(struct channel channel, uint16_t pulse_width)
     }
     throttle = throttle < DEADBAND ? 0 : throttle;                           // zero throttle within deadband
 
+#define MIN_MOTOR (channel.min_motor)  // minimum (raw) PWM level for motor to start moving (hard coded into channel struct by testing on actual model)
 #define SLICENUM (pwm_gpio_to_slice_num(channel.pin[0]))                     // determine PWM hardware slice to get servo_wrap value
     uint16_t level = 0;                                                      // level is 0 if within deadband
     if (throttle > 0)
+    {
         level = MIN_MOTOR + (throttle * (servo_wrap[SLICENUM] + 1 - MIN_MOTOR)) / 1000;  // scale throttle to PWM level based on servo_wrap for the slice
+    }
 
     if (channel.type == UNI_MOTOR || pulse_width > 1500)  // both uni-directional motors and bi-directional motors with forward throttle use forward pin
     {
